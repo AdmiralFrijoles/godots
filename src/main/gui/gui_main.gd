@@ -138,6 +138,12 @@ func _ready() -> void:
 	
 	Context.add(self, %CommandViewer)
 
+	var auto_installer := RemoteAutoInstaller.new(_remote_editors)
+	Context.add(self, auto_installer)
+	_on_exit_tree_callbacks.append(func() -> void:
+		Context.erase(self, auto_installer)
+	)
+
 
 func _notification(what: int) -> void:
 	if NOTIFICATION_APPLICATION_FOCUS_OUT == what:

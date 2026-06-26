@@ -74,7 +74,7 @@ func _ready() -> void:
 	_remote_editors_tree.set_data_source(_tree_mirrors[cached_mirror_id])
 
 
-func download_zip(url: String, file_name: String) -> void:
+func download_zip(url: String, file_name: String, on_install:Variant=null) -> void:
 	var editor_download: AssetDownload = _editor_download_scene.instantiate()
 	_editor_downloads.add_download_item(editor_download)
 	editor_download.start(
@@ -87,10 +87,13 @@ func download_zip(url: String, file_name: String) -> void:
 	)
 	editor_download.downloaded.connect(func(abs_path: String) -> void:
 		install_zip(
-			abs_path, 
-			file_name.replace(".zip", "").replace(".", "_"), 
+			abs_path,
+			file_name.replace(".zip", "").replace(".", "_"),
 			utils.guess_editor_name(file_name.replace(".zip", "")),
-			func() -> void: editor_download.queue_free()
+			func(installed_path: String) -> void:
+				editor_download.queue_free()
+				if on_install:
+					(on_install as Callable).call(installed_path)
 		)
 	)
 
@@ -112,11 +115,46 @@ func install_zip(zip_abs_path: String, root_unzip_folder_name: String, possible_
 		add_child(editor_install)
 		editor_install.init(possible_editor_name, zip_content_dir)
 		editor_install.installed.connect(func(p_name: String, exec_path: String) -> void:
-			installed.emit(p_name, ProjectSettings.globalize_path(exec_path))
+			var globalized := ProjectSettings.globalize_path(exec_path)
+			installed.emit(p_name, globalized)
 			if on_install:
-				(on_install as Callable).call()
+				(on_install as Callable).call(globalized)
 		)
 		editor_install.popup_centered()
+
+
+func async_auto_install(version_hint: String, on_done: Callable) -> void:
+	var parsed := VersionHint.parse(version_hint)
+	if not parsed.is_valid:
+		Output.push("Cannot resolve version hint for auto install: %s" % version_hint)
+		on_done.call("")
+		return
+
+	var source := RemoteEditorsTreeDataSourceGithub.GithubAssetSourceDefault.new()
+	var assets := await source.async_load(parsed.version, parsed.stage)
+
+	var suffixes := RemoteEditorsTreeDataSourceGithub.Self.get_host_suffixes()
+	var re_mono := RegEx.new()
+	re_mono.compile(r"(?:^|[-_.])mono(?:$|[-_.])")
+
+	var candidate: RemoteEditorsTreeDataSourceGithub.GodotAsset = null
+	for asset: RemoteEditorsTreeDataSourceGithub.GodotAsset in assets:
+		if not asset.is_zip:
+			continue
+		var asset_is_mono := re_mono.search(asset.name.to_lower()) != null
+		if asset_is_mono != parsed.is_mono:
+			continue
+		if not suffixes.any(func(s: String) -> bool: return asset.name.ends_with(s)):
+			continue
+		candidate = asset
+		break
+
+	if candidate == null:
+		Output.push("No matching editor download found for: %s" % version_hint)
+		on_done.call("")
+		return
+
+	download_zip(candidate.browser_download_url, candidate.file_name, on_done)
 
 
 func _unzip_downloaded(downloaded_abs_path: String, root_unzip_folder_name: String) -> String:

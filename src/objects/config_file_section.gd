@@ -29,3 +29,7 @@ func get_typed_value(key: String, type_check: Callable, default: Variant = null)
 
 func set_value(key: String, value: Variant) -> void:
 	self._cfg.set_value(self._section, key, value)
+
+
+func has(key: String) -> bool:
+	return self._cfg.has_section_key(self._section, key)

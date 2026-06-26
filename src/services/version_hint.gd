@@ -30,7 +30,7 @@ static func similarity(a: String, b: String) -> int:
 		score += 6
 	if parsed_a.minor_version == parsed_b.minor_version:
 		score += 6
-	if parsed_a.version == parsed_b.version:
+	if _versions_equal(parsed_a.version, parsed_b.version):
 		score += 6
 	if parsed_a.is_mono == parsed_b.is_mono:
 		score += 2
@@ -44,7 +44,23 @@ static func similarity(a: String, b: String) -> int:
 
 
 static func same_version(a: String, b: String) -> bool:
-	return parse(a).version == parse(b).version
+	return _versions_equal(parse(a).version, parse(b).version)
+
+
+static func _versions_equal(a: String, b: String) -> bool:
+	if a == b:
+		return true
+	if a.is_empty() or b.is_empty():
+		return false
+	var pa := a.split(".")
+	var pb := b.split(".")
+	var n := maxi(pa.size(), pb.size())
+	for i in n:
+		var va := int(pa[i]) if i < pa.size() else 0
+		var vb := int(pb[i]) if i < pb.size() else 0
+		if va != vb:
+			return false
+	return true
 
 
 static func parse(version_hint: String) -> Item:
@@ -98,7 +114,7 @@ class Item:
 			return false
 		if not other.is_valid:
 			return false
-		var result := self.version == other.version and self.stage == other.stage
+		var result := VersionHint._versions_equal(self.version, other.version) and self.stage == other.stage
 		if not ignore_mono:
 			return result and self.is_mono == other.is_mono
 		else:

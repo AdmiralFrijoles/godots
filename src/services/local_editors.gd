@@ -31,6 +31,9 @@ class List extends RefCounted:
 		editor.name = name
 		editor.favorite = false
 		editor.extra_arguments = []
+		var probed := utils.probe_version_hint(editor.get_bin_path())
+		if not probed.is_empty():
+			editor.version_hint = probed
 		_editors[editor_path] = editor
 		return editor
 	
@@ -79,12 +82,20 @@ class List extends RefCounted:
 		cleanup()
 		var err := _cfg.load(_cfg_path)
 		if err: return err
+		var changed := false
 		for section in _cfg.get_sections():
 			var editor := Item.new(
 				ConfigFileSection.new(section, IConfigFileLike.of_config(_cfg))
 			)
 			_connect_name_changed(editor)
 			_editors[section] = editor
+			if editor.is_valid and not editor.has_stored_version_hint():
+				var probed := utils.probe_version_hint(editor.get_bin_path())
+				if not probed.is_empty():
+					editor.version_hint = probed
+					changed = true
+		if changed:
+			save()
 		return Error.OK
 	
 	func cleanup() -> void:
@@ -205,6 +216,12 @@ class Item extends Object:
 	
 	func match_version_hint(hint: String, ignore_mono:=false) -> bool:
 		return VersionHint.are_equal(self.version_hint, hint, ignore_mono)
+
+	func has_stored_version_hint() -> bool:
+		return _section.has("version_hint")
+
+	func get_bin_path() -> String:
+		return _bin_path()
 	
 	func get_version() -> String:
 		var parsed := VersionHint.parse(version_hint)

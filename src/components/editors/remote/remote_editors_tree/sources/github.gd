@@ -44,6 +44,25 @@ class Self extends RemoteEditorsTreeDataSource.I:
 		elif OS.has_feature("linux"):
 			current_platform = platforms["X11"]
 		return current_platform["suffixes"]
+
+	static func get_host_suffixes() -> Array:
+		if OS.has_feature("macos"):
+			return platforms["OSX"]["suffixes"]
+		if OS.has_feature("windows"):
+			if OS.has_feature("arm64"):
+				return ["_windows_arm64.exe.zip", "_windows_arm64.zip"]
+			if OS.has_feature("x86_32"):
+				return ["_win32.exe.zip", "_win32.zip"]
+			return ["_win64.exe.zip", "_win64.zip"]
+		if OS.has_feature("linux"):
+			if OS.has_feature("arm64"):
+				return ["_linux.arm64.zip", "_linux_arm64.zip"]
+			if OS.has_feature("arm32"):
+				return ["_linux.arm32.zip", "_linux_arm32.zip"]
+			if OS.has_feature("x86_32"):
+				return ["_linux.x86_32.zip", "_linux_x86_32.zip"]
+			return ["_linux.x86_64.zip", "_linux_x86_64.zip", "_x11.64.zip", "_linux.64.zip"]
+		return []
 	
 	func to_remote_item(item: TreeItem) -> RemoteEditorsTreeDataSource.Item:
 		return item.get_meta("delegate")

@@ -53,6 +53,76 @@ static func guess_editor_name(file_name: String) -> String:
 	return name
 
 
+static func probe_version_hint(bin_path: String) -> String:
+	if bin_path.is_empty():
+		return ""
+	var globalized := ProjectSettings.globalize_path(bin_path)
+	if not edir.path_is_valid(globalized):
+		return ""
+	var output := []
+	var exit_code := OS.execute(globalized, ["--version"], output, true)
+	if exit_code != 0:
+		return ""
+	if output.is_empty():
+		return ""
+	return parse_godot_version_output(output[0] as String)
+
+
+static func parse_godot_version_output(text: String) -> String:
+	if text == null or text.strip_edges().is_empty():
+		return ""
+
+	var line := ""
+	for raw_line in text.split("\n"):
+		var candidate := (raw_line as String).strip_edges()
+		if candidate.is_empty():
+			continue
+		if candidate.substr(0, 1).is_valid_int():
+			line = candidate
+			break
+	if line.is_empty():
+		return ""
+
+	var re_mono := RegEx.new()
+	re_mono.compile(r"(?:^|[-_.])mono(?:$|[-_.])")
+	var is_mono := re_mono.search(line.to_lower()) != null
+
+	var tokens := line.split(".")
+	var version_parts: PackedStringArray = []
+	var idx := 0
+	while idx < tokens.size():
+		var t := (tokens[idx] as String).strip_edges()
+		if t.is_valid_int():
+			version_parts.append(t)
+			idx += 1
+		else:
+			break
+	if version_parts.is_empty():
+		return ""
+	var version := ".".join(version_parts)
+
+	var stage := "stable"
+	var known_stages: PackedStringArray = ["stable", "dev", "rc", "alpha", "beta"]
+	while idx < tokens.size():
+		var t := (tokens[idx] as String).strip_edges().to_lower()
+		idx += 1
+		if t == "mono":
+			continue
+		var matched := false
+		for s in known_stages:
+			if t.begins_with(s):
+				stage = t
+				matched = true
+				break
+		if matched:
+			break
+
+	var hint := "v%s-%s" % [version, stage]
+	if is_mono:
+		hint += "-mono"
+	return hint
+
+
 static func _strip_known_extensions(base: String) -> String:
 	var lower_base := base.to_lower()
 	var compound_extensions: PackedStringArray = [

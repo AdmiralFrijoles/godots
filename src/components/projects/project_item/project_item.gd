@@ -74,8 +74,8 @@ func init(item: Projects.Item) -> void:
 	double_clicked.connect(func() -> void:
 		if item.is_missing:
 			return
-		
-		if item.has_invalid_editor:
+
+		if item.has_invalid_editor and not item.has_version_hint:
 			_on_rebind_editor(item)
 		else:
 			_on_edit_with_editor(item)
@@ -368,6 +368,13 @@ func _on_edit_with_editor(item: Projects.Item) -> void:
 
 
 func _on_run_with_editor(item: Projects.Item, editor_flag: Callable, action_name: String, ok_button_text: String, auto_close: bool) -> void:
+	if item.is_missing:
+		return
+
+	if item.has_version_hint and not _editor_satisfies_requirement(item):
+		_gate_version_mismatch(item, editor_flag, action_name, ok_button_text, auto_close)
+		return
+
 	if not item.show_edit_warning:
 		_run_with_editor(item, editor_flag, auto_close)
 		return
@@ -403,6 +410,56 @@ func _on_run_with_editor(item: Projects.Item, editor_flag: Callable, action_name
 	)
 	add_child(confirmation_dialog)
 	confirmation_dialog.popup_centered()
+
+
+func _editor_satisfies_requirement(item: Projects.Item) -> bool:
+	if item.has_invalid_editor:
+		return false
+	return item.editor.match_version_hint(item.version_hint)
+
+
+func _gate_version_mismatch(item: Projects.Item, editor_flag: Callable, action_name: String, ok_button_text: String, auto_close: bool) -> void:
+	var local_editors := Context.use_or_null(self, LocalEditors.List) as LocalEditors.List
+	var matching_editor: LocalEditors.Item = null
+	if local_editors:
+		matching_editor = LocalEditors.Selector.new()\
+			.by_version_hint(item.version_hint)\
+			.select_first_or_null(local_editors)
+
+	if matching_editor != null:
+		var bind_dialog := ConfirmationDialogAutoFree.new()
+		bind_dialog.ok_button_text = tr("Bind and Continue")
+		bind_dialog.dialog_text = tr("This project requires Godot %s, which is installed but not bound to it. Bind it and continue?") % item.version_hint
+		bind_dialog.confirmed.connect(func() -> void:
+			item.editor_path = matching_editor.path
+			edited.emit()
+			_on_run_with_editor(item, editor_flag, action_name, ok_button_text, auto_close)
+		)
+		add_child(bind_dialog)
+		bind_dialog.popup_centered()
+		return
+
+	var installer := Context.use_or_null(self, RemoteAutoInstaller) as RemoteAutoInstaller
+	var install_dialog := ConfirmationDialogAutoFree.new()
+	if installer == null:
+		install_dialog.dialog_text = tr("This project requires Godot %s, which is not installed.") % item.version_hint
+		add_child(install_dialog)
+		install_dialog.popup_centered()
+		return
+
+	install_dialog.ok_button_text = tr("Install")
+	install_dialog.dialog_text = tr("This project requires Godot %s, which is not installed. Install it now?") % item.version_hint
+	install_dialog.confirmed.connect(func() -> void:
+		installer.async_install(item.version_hint, func(path: String) -> void:
+			if path.is_empty():
+				return
+			item.editor_path = path
+			edited.emit()
+			_on_run_with_editor(item, editor_flag, action_name, ok_button_text, auto_close)
+		)
+	)
+	add_child(install_dialog)
+	install_dialog.popup_centered()
 
 
 func _show_in_file_manager(item: Projects.Item) -> void:
